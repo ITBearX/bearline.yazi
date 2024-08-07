@@ -16,37 +16,37 @@ local version = 3.0
 
 if version >= 3.0 then
 
---[[
-  function Linemode.mtime(self, file)
-	  local time = self._file.cha.modified
-	  return ui.Line(time and os.date("%m-%d %H:%M", time // 1) or "")
-  end
-
-  local basic_size = Linemode.size
-  function Linemode.size(self, file)
-    return basic_size(self, file)
-  end
-]]--
-
   local set_state = ya.sync(function(state)
-    --local dir = cx.active.current.cwd
     if cx.active.conf.linemode ~= "bearline" then
       return
     end
     local handle = io.popen("git rev-parse --is-inside-work-tree 2>/dev/null")
     local result = handle:read("*a")
     handle:close()
-    state.is_git = result:match("true") ~= nil
+    if result:match("true") ~= nil then
+      state.is_git = true
+      local handle = io.popen("git status --porcelain")
+      local result = handle:read("*a")
+      handle:close()
+      state.git_info = {}
+      for line in result:gmatch("[^\n]+") do
+        local mod = line:sub(1, 2)
+        local filename = line:sub(4)
+        state.git_info[filename] = mod
+      end
+    else
+      state.is_git = false
+    end
   end)
 
-  local get_state = ya.sync(function(state)
+  local get_state = ya.sync(function(state, filename)
     if cx.active.conf.linemode ~= "bearline" then
       return ""
     end
     if state.is_git then
-      return "[G]"
+      return string.format("[%s]", state.git_info[filename] or "  ")
     end
-    return "[N]"
+    return ""
   end)
 
   local basic_render = Linemode.render
@@ -56,7 +56,7 @@ if version >= 3.0 then
   end
 
   function Linemode:bearline()
-    git_st = get_state()
+    git_st = get_state(self._file.name)
     return process_line(self._file, git_st)
   end
 
